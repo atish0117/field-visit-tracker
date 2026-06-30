@@ -50,7 +50,7 @@ export function VisitsPage({
       </div>
 
       {/* Table */}
-      <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, overflow: "auto" }}>
+      <div className="visits-table-container">
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--hover)" }}>
@@ -123,6 +123,58 @@ export function VisitsPage({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Cards View */}
+      <div className="visits-cards-container">
+        {applyFilters.length === 0 && (
+          <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 30, textAlign: "center", color: "var(--muted)", fontFamily: "var(--font)", fontSize: 13 }}>
+            {locations.length === 0 ? "No locations yet — add your first location!" : "No locations match your filters."}
+          </div>
+        )}
+        {applyFilters.map((loc, idx) => {
+          const v1 = getVisit(loc.location_id, 1),
+            v2 = getVisit(loc.location_id, 2);
+          return (
+            <div key={loc.location_id || loc._docId || `mobile-${idx}`} className="visits-card">
+              <div className="visits-card-header">
+                <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 800, color: "#3b82f6", background: "#3b82f610", padding: "3px 8px", borderRadius: 4 }}>
+                  {loc.location_id}
+                </span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <SBadge status={getStatus(loc.location_id)} />
+                  <button onClick={() => openEdit(loc)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--muted)", padding: 4, borderRadius: 4 }}>
+                    <Icon d={I.edit} size={15} />
+                  </button>
+                  <button onClick={() => setDel(loc.location_id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#ef4444", padding: 4, borderRadius: 4 }}>
+                    <Icon d={I.trash} size={15} />
+                  </button>
+                </div>
+              </div>
+              
+              <div className="visits-card-title">{loc.name}</div>
+              
+              {loc.address && (
+                <div className="visits-card-address">
+                  📍 {loc.address}
+                </div>
+              )}
+              
+              <div className="visits-card-actions">
+                <VBtn n={1} data={v1} onClick={() => markVisit(loc.location_id, 1)} disabled={!!v1} loading={vLoad[`${loc.location_id}_1`]} />
+                <VBtn n={2} data={v2} onClick={() => markVisit(loc.location_id, 2)} disabled={!v1 || !!v2} loading={vLoad[`${loc.location_id}_2`]} />
+              </div>
+              
+              {loc.link && (
+                <div className="visits-card-footer">
+                  <a href={loc.link} target="_blank" rel="noreferrer" style={{ color: "#3b82f6", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, textDecoration: "none", fontWeight: 600 }}>
+                    <Icon d={I.link} size={12} />Open Map
+                  </a>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,9 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BarChart } from "../components/ui/BarChart";
 import { SBadge } from "../components/ui/Badge";
 import { fmtDate } from "../lib/utils";
+import { Icon, I } from "../lib/icons";
 
 export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getStatus }) {
+  const [activeStatusFilter, setActiveStatusFilter] = useState("all");
+  const [breakdownSearch, setBreakdownSearch] = useState("");
+
   // Compute overall status statistics for dashboard analytics
   const stats = useMemo(() => {
     let completed = 0, partial = 0, pending = 0;
@@ -25,15 +29,92 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
     };
   }, [locations, getStatus]);
 
+  // Advanced Operations Metrics Calculations
+  const operationsMetrics = useMemo(() => {
+    let totalVisitsLogged = 0;
+    const reasonCounts = {};
+
+    locations.forEach((loc) => {
+      if (getVisit(loc.location_id, 1)) totalVisitsLogged++;
+      if (getVisit(loc.location_id, 2)) totalVisitsLogged++;
+
+      const r = loc.reason || "R1";
+      reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+    });
+
+    const maxPossibleVisits = locations.length * 2;
+    const complianceRate = maxPossibleVisits > 0 ? Math.round((totalVisitsLogged / maxPossibleVisits) * 100) : 0;
+    const remainingVisits = maxPossibleVisits - totalVisitsLogged;
+
+    let topReason = "None";
+    let topReasonCount = 0;
+    Object.entries(reasonCounts).forEach(([r, count]) => {
+      if (count > topReasonCount) {
+        topReason = r;
+        topReasonCount = count;
+      }
+    });
+
+    return {
+      totalVisitsLogged,
+      maxPossibleVisits,
+      complianceRate,
+      remainingVisits,
+      topReason,
+      topReasonCount
+    };
+  }, [locations, getVisit]);
+
+  // Filter locations for Monthly Breakdown
+  const filteredBreakdownLocations = useMemo(() => {
+    return locations.filter((loc) => {
+      const st = getStatus(loc.location_id);
+      const statusMatch = activeStatusFilter === "all" || st === activeStatusFilter;
+      
+      const q = breakdownSearch.toLowerCase().trim();
+      const searchMatch = !q || loc.location_id.toLowerCase().includes(q) || loc.name.toLowerCase().includes(q);
+
+      return statusMatch && searchMatch;
+    });
+  }, [locations, activeStatusFilter, breakdownSearch, getStatus]);
+
+  const toggleStatusFilter = (status) => {
+    setActiveStatusFilter((prev) => (prev === status ? "all" : status));
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      
       {/* Completion Status Summary Card */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4, fontFamily: "var(--font)" }}>
-          Visit Completion Progress
-        </div>
-        <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--font)", marginBottom: 14 }}>
-          Overall status breakdown of all {stats.total} locations
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4, fontFamily: "var(--font)" }}>
+              Visit Completion Progress
+            </div>
+            <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--font)", marginBottom: 14 }}>
+              Overall status breakdown of all {stats.total} locations. Click cards below to filter breakdown.
+            </div>
+          </div>
+          {activeStatusFilter !== "all" && (
+            <button
+              onClick={() => setActiveStatusFilter("all")}
+              style={{
+                fontSize: 11,
+                color: "#3b82f6",
+                background: "#3b82f610",
+                border: "1px solid #3b82f630",
+                borderRadius: 6,
+                padding: "3px 10px",
+                cursor: "pointer",
+                fontFamily: "var(--font)",
+                fontWeight: 600,
+                alignSelf: "flex-start"
+              }}
+            >
+              Clear Status Filter
+            </button>
+          )}
         </div>
         
         {/* Stacked Progress Bar */}
@@ -43,22 +124,99 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
           {stats.pending > 0 && <div style={{ width: `${stats.pendingPct}%`, background: "linear-gradient(90deg, #ef4444, #dc2626)", transition: "width 0.4s" }} title={`Pending: ${stats.pending}`} />}
         </div>
         
-        {/* Status Count Legend cards */}
+        {/* Status Count Legend cards (Interactive) */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 12 }}>
           {[
-            { label: "Completed", count: stats.completed, pct: stats.completedPct, color: "#22c55e", bg: "#22c55e10" },
-            { label: "Partial", count: stats.partial, pct: stats.partialPct, color: "#f59e0b", bg: "#f59e0b10" },
-            { label: "Pending", count: stats.pending, pct: stats.pendingPct, color: "#ef4444", bg: "#ef444410" },
-          ].map((item) => (
-            <div key={item.label} style={{ background: item.bg, border: `1px solid ${item.color}25`, borderRadius: 12, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 2 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: item.color, fontFamily: "var(--font)" }}>
-                {item.count} <span style={{ fontSize: 11, fontWeight: 500, opacity: 0.8 }}>({item.pct}%)</span>
+            { label: "Completed", count: stats.completed, pct: stats.completedPct, color: "#22c55e", bg: "#22c55e10", statusVal: "Completed" },
+            { label: "Partial", count: stats.partial, pct: stats.partialPct, color: "#f59e0b", bg: "#f59e0b10", statusVal: "Partial" },
+            { label: "Pending", count: stats.pending, pct: stats.pendingPct, color: "#ef4444", bg: "#ef444410", statusVal: "Pending" },
+          ].map((item) => {
+            const isActive = activeStatusFilter === item.statusVal;
+            return (
+              <div 
+                key={item.label} 
+                onClick={() => toggleStatusFilter(item.statusVal)}
+                style={{ 
+                  background: item.bg, 
+                  border: `2px solid ${isActive ? item.color : "transparent"}`,
+                  outline: `1px solid ${isActive ? "transparent" : `${item.color}25`}`,
+                  borderRadius: 12, 
+                  padding: "10px 14px", 
+                  display: "flex", 
+                  flexDirection: "column", 
+                  gap: 2,
+                  cursor: "pointer",
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                  transform: isActive ? "translateY(-1px)" : "none",
+                  boxShadow: isActive ? `0 4px 12px ${item.color}20` : "none"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  if (!isActive) e.currentTarget.style.border = `2px solid ${item.color}35`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = isActive ? "translateY(-1px)" : "none";
+                  if (!isActive) e.currentTarget.style.border = "2px solid transparent";
+                }}
+              >
+                <div style={{ fontSize: 18, fontWeight: 800, color: item.color, fontFamily: "var(--font)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>{item.count} <span style={{ fontSize: 11, fontWeight: 500, opacity: 0.8 }}>({item.pct}%)</span></span>
+                  {isActive && <span style={{ fontSize: 12 }}>✓</span>}
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", fontFamily: "var(--font)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  {item.label}
+                </div>
               </div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", fontFamily: "var(--font)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {item.label}
-              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Advanced Performance & Config Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12 }}>
+        {/* Compliance Rate KPI Card */}
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(59, 130, 246, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", flexShrink: 0 }}>
+            <span style={{ fontSize: 18, margin: "auto" }}>📈</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", fontFamily: "var(--font)" }}>
+              {operationsMetrics.complianceRate}%
             </div>
-          ))}
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>
+              Visit Compliance Rate
+            </div>
+          </div>
+        </div>
+
+        {/* Remaining Visits KPI Card */}
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(245, 158, 11, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#f59e0b", flexShrink: 0 }}>
+            <span style={{ fontSize: 18, margin: "auto" }}>⏳</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", fontFamily: "var(--font)" }}>
+              {operationsMetrics.remainingVisits}
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>
+              Remaining Logs (Target: {operationsMetrics.maxPossibleVisits})
+            </div>
+          </div>
+        </div>
+
+        {/* Top Configurations KPI Card */}
+        <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(99, 102, 241, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#6366f1", flexShrink: 0 }}>
+            <span style={{ fontSize: 18, margin: "auto" }}>📋</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", fontFamily: "var(--font)" }}>
+              {operationsMetrics.topReason}
+            </div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>
+              Top RBO Reason ({operationsMetrics.topReasonCount} Locations)
+            </div>
+          </div>
         </div>
       </div>
 
@@ -69,11 +227,65 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
      
       {/* Monthly breakdown */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 14, fontFamily: "var(--font)" }}>
-          Current Month Breakdown
+        
+        {/* Header with Search Input */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font)" }}>
+              Current Month Breakdown
+            </div>
+            {activeStatusFilter !== "all" && (
+              <span style={{ background: "#3b82f615", color: "#3b82f6", fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "2px 8px", fontFamily: "var(--font)" }}>
+                Filtered: {activeStatusFilter}
+              </span>
+            )}
+          </div>
+          <div style={{ position: "relative", width: "100%", maxWidth: 260 }}>
+            <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", display: "flex", alignItems: "center" }}>
+              <Icon d={I.search} size={12} />
+            </div>
+            <input
+              value={breakdownSearch}
+              onChange={(e) => setBreakdownSearch(e.target.value)}
+              placeholder="Search breakdown ID, name…"
+              style={{
+                width: "100%",
+                padding: "6px 12px 6px 28px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--bg)",
+                color: "var(--text)",
+                fontSize: 11,
+                fontFamily: "var(--font)",
+                outline: "none"
+              }}
+            />
+            {breakdownSearch && (
+              <button
+                onClick={() => setBreakdownSearch("")}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  color: "var(--muted)",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: "bold",
+                  padding: 2
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Grid List */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10 }}>
-          {locations.map((loc) => {
+          {filteredBreakdownLocations.map((loc) => {
             const v1 = getVisit(loc.location_id, 1),
               v2 = getVisit(loc.location_id, 2),
               st = getStatus(loc.location_id);
@@ -100,6 +312,11 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
               </div>
             );
           })}
+          {filteredBreakdownLocations.length === 0 && (
+            <div style={{ gridColumn: "1/-1", textAlign: "center", padding: 40, color: "var(--muted)", fontFamily: "var(--font)", fontSize: 12 }}>
+              No breakdown items match the active filters or search query.
+            </div>
+          )}
         </div>
       </div>
     </div>
