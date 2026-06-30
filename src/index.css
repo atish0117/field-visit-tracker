@@ -32,10 +32,209 @@ body {
   border-radius: 2px;
 }
 
+/* Responsive Helper Utilities */
+.desktop-only {
+  display: block !important;
+}
+.mobile-only {
+  display: none !important;
+}
+
+.menu-toggle-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-loc-btn-text {
+  display: inline;
+}
+
+/* Calendar page grid layout container */
+.cal-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+}
+
+/* Form layout grids */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 14px;
+}
+
+/* Visits Table Container */
+.visits-table-container {
+  display: block;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: auto;
+}
+
+/* Visits Card Container (Mobile) */
+.visits-cards-container {
+  display: none;
+}
+
+@media (min-width: 721px) {
+  .cal-grid {
+    grid-template-columns: 484px 240px;
+    max-width: 740px;
+  }
+  .cal-grid.with-details {
+    grid-template-columns: 484px 240px 300px;
+    max-width: 1056px;
+  }
+}
+
+/* Hide mobile drawer by default on desktop */
+.mobile-sidebar-drawer {
+  display: none;
+}
+
 @media (max-width: 720px) {
-  .ml { flex-direction: column !important; }
-  .sd { display: none !important; }
-  .cal-grid { grid-template-columns: 1fr !important; }
+  .ml {
+    flex-direction: column !important;
+  }
+  .sd {
+    display: none !important;
+  }
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: block !important;
+  }
+  
+  /* Topbar Mobile styling */
+  .topbar {
+    padding: 10px 14px !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .menu-toggle-btn {
+    display: flex !important;
+  }
+  .add-loc-btn-text {
+    display: none !important;
+  }
+  .add-loc-btn {
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+  }
+  .topbar-search-container {
+    order: 2;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 4px 0 0 0 !important;
+  }
+  
+  /* Mobile Sidebar Drawer overlay and container */
+  .mobile-sidebar-drawer {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    visibility: hidden;
+    pointer-events: none;
+    transition: visibility 0.25s;
+  }
+  .mobile-sidebar-drawer.open {
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .drawer-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 17, 23, 0.6);
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    backdrop-filter: blur(4px);
+  }
+  .mobile-sidebar-drawer.open .drawer-overlay {
+    opacity: 1;
+  }
+  .drawer-content {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 240px;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.3);
+  }
+  .mobile-sidebar-drawer.open .drawer-content {
+    transform: translateX(0);
+  }
+  
+  /* Form grid on mobile */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+  
+  /* Visits table and cards visibility */
+  .visits-table-container {
+    display: none !important;
+  }
+  .visits-cards-container {
+    display: flex !important;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  /* Visits Card Styles */
+  .visits-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .visits-card:active {
+    transform: scale(0.99);
+  }
+  .visits-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .visits-card-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text);
+    font-family: var(--font);
+  }
+  .visits-card-address {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--font);
+    line-height: 1.4;
+  }
+  .visits-card-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .visits-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 2px;
+  }
 }
 
 /* Form Styles */
