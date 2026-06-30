@@ -510,7 +510,7 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                 <Btn variant="ghost" onClick={() => setDel(null)}>Cancel</Btn>
                 <Btn variant="danger" onClick={() => deleteLoc(delConfirm)} loading={syncing}>
-                  Delete from Appwrite
+                  Delete Permanently
                 </Btn>
               </div>
             </div>
