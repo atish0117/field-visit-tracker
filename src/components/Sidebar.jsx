@@ -155,7 +155,7 @@ export function Sidebar({ profile, setPF, setEP, tab, setTab, setSO, navItems, s
             fontWeight: 600,
           }}
         >
-          <Icon d={I.refresh} size={13} /> Sync Appwrite
+          <Icon d={I.refresh} size={13} /> Sync DATA
         </button>
         <button
           onClick={() => setDark((d) => !d)}
