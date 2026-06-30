@@ -353,19 +353,19 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
           />
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-          <div style={{ padding: "13px 20px", borderBottom: "1px solid var(--border)", background: "var(--card)", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 100 }}>
-            <button onClick={() => setSO((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text)", padding: 4, display: "none" }}>
+          <div style={{ padding: "13px 20px", borderBottom: "1px solid var(--border)", background: "var(--card)", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 100 }} className="topbar">
+            <button onClick={() => setSO((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text)", padding: 4 }} className="menu-toggle-btn">
               <Icon d={I.menu} size={20} />
             </button>
             <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", fontFamily: "var(--font)" }}>
               {navItems.find((n) => n.id === tab)?.label}
             </div>
             {(tab === "visits" || tab === "locations") && (
-              <Btn size="sm" variant="outline" onClick={openAdd} style={{ marginLeft: 0 }}>
-                <Icon d={I.plus} size={13} />Add Location
+              <Btn size="sm" variant="outline" onClick={openAdd} style={{ marginLeft: 0 }} className="add-loc-btn">
+                <Icon d={I.plus} size={13} /><span className="add-loc-btn-text">Add Location</span>
               </Btn>
             )}
-            <div style={{ flex: 1, maxWidth: 340, marginLeft: "auto", position: "relative" }}>
+            <div style={{ flex: 1, maxWidth: 340, marginLeft: "auto", position: "relative" }} className="topbar-search-container">
               <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }}>
                 <Icon d={I.search} size={13} />
               </div>
@@ -392,14 +392,13 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
         </div>
       </div>
 
-      {sidebarOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 200 }}>
-          <div onClick={() => setSO(false)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)" }} />
-          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 240 }}>
-            <Sidebar profile={profile} setPF={setPF} setEP={setEP} tab={tab} setTab={setTab} setSO={setSO} navItems={navItems} syncAll={syncAll} dark={dark} setDark={setDark} />
-          </div>
+      {/* Mobile Drawer (Always rendered, classes control animation) */}
+      <div className={`mobile-sidebar-drawer ${sidebarOpen ? "open" : ""}`}>
+        <div className="drawer-overlay" onClick={() => setSO(false)} />
+        <div className="drawer-content">
+          <Sidebar profile={profile} setPF={setPF} setEP={setEP} tab={tab} setTab={setTab} setSO={setSO} navItems={navItems} syncAll={syncAll} dark={dark} setDark={setDark} />
         </div>
-      )}
+      </div>
 
       {/* ── Profile Modal ── */}
       <Modal open={editProfile} onClose={() => setEP(false)} title="Edit Profile">
@@ -430,7 +429,7 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "0 14px" }}>
           <Inp label="Location ID" value={locForm.location_id} onChange={(v) => setLF((p) => ({ ...p, location_id: v }))} placeholder="LOC001" mono hint="Unique identifier" />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>
+        <div className="form-grid">
           <Inp label="Location Name" value={locForm.name} onChange={(v) => setLF((p) => ({ ...p, name: v }))} placeholder="Branch name, office, site…" />
           <Sel
             label="RBO"
@@ -451,7 +450,7 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
         </div>
         <Inp label="Full Address" value={locForm.address} onChange={(v) => setLF((p) => ({ ...p, address: v }))} placeholder="Street, City, State, ZIP" rows={2} hint="Full mailing address" />
         
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 14px" }}>
+        <div className="form-grid">
           <Inp
             label="Latitude"
             value={locForm.latitude || ""}
