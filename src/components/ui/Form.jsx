@@ -156,7 +156,7 @@ export function Sel({ label, value, onChange, options, hint }) {
   );
 }
 
-export function Btn({ children, onClick, variant = "primary", size = "md", disabled, loading, style: s = {} }) {
+export function Btn({ children, onClick, variant = "primary", size = "md", disabled, loading, style: s = {}, className }) {
   const base = {
     border: "none",
     cursor: disabled || loading ? "not-allowed" : "pointer",
@@ -186,6 +186,7 @@ export function Btn({ children, onClick, variant = "primary", size = "md", disab
     <button 
       onClick={disabled || loading ? undefined : onClick} 
       style={{ ...base, ...sz[size], ...vr[variant], ...s }}
+      className={className}
       onMouseEnter={(e) => {
         if (!disabled && !loading) {
           e.currentTarget.style.transform = "translateY(-1px)";
