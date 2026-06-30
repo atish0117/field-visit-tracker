@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { getDIM, getFDM, getNow, fmtDateFull, fmtTime } from "../lib/utils";
 
 export function CalendarPage({ calYear, calMonth, calDay, setCalMonth, setCalYear, setCalDay, calVisits }) {
@@ -9,11 +9,24 @@ export function CalendarPage({ calYear, calMonth, calDay, setCalMonth, setCalYea
 
   // State to hold the currently selected visit details
   const [selectedVisit, setSelectedVisit] = useState(null);
+  const detailsRef = useRef(null);
 
   // Reset selected visit details whenever selected day changes
   useEffect(() => {
     setSelectedVisit(null);
   }, [calDay]);
+
+  // Scroll details panel into view when selected
+  useEffect(() => {
+    if (selectedVisit) {
+      const timer = setTimeout(() => {
+        if (detailsRef.current) {
+          detailsRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedVisit]);
 
   // Compute total visits recorded in this month
   const totalMonthVisits = useMemo(() => {
@@ -26,13 +39,8 @@ export function CalendarPage({ calYear, calMonth, calDay, setCalMonth, setCalYea
 
   return (
     <div 
-      className="cal-grid" 
+      className={`cal-grid ${selectedVisit ? "with-details" : ""}`} 
       style={{ 
-        display: "grid", 
-        gridTemplateColumns: selectedVisit ? "484px 240px 300px" : "484px 240px", 
-        gap: 16, 
-        alignItems: "start", 
-        maxWidth: selectedVisit ? 1056 : 740,
         transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
       }}
     >
@@ -223,6 +231,7 @@ export function CalendarPage({ calYear, calMonth, calDay, setCalMonth, setCalYea
       {/* Selected Visit Full Location Details Panel */}
       {selectedVisit && (
         <div 
+          ref={detailsRef}
           style={{ 
             background: "var(--card)", 
             border: "1px solid var(--border)", 
