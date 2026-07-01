@@ -1,7 +1,22 @@
 import { Icon, I } from "../lib/icons";
 import { Btn } from "../components/ui/Form";
 
-export function RemindersPage({ pendingRem, getVisit, markVisit, vLoad }) {
+export function RemindersPage({ pendingRem, getVisit, markVisit, vLoad, currentDay }) {
+  if (currentDay !== undefined && currentDay <= 25) {
+    return (
+      <div style={{ textAlign: "center", padding: 60, color: "var(--muted)", fontFamily: "var(--font)", background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16 }}>
+        <div style={{ fontSize: 48, marginBottom: 14 }}>📅</div>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>No Active Reminders</div>
+        <div style={{ fontSize: 13, marginTop: 6 }}>
+          Reminders are shown after the 25th of the month.
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+          Current Date: Day {currentDay} of the month
+        </div>
+      </div>
+    );
+  }
+
   if (pendingRem.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: 70, color: "var(--muted)", fontFamily: "var(--font)" }}>

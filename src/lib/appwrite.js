@@ -87,6 +87,8 @@ class AWSvc {
           name: d.LocationName,
           address: d.address || "",
           link: d.link || "",
+          latitude: d.latitude !== undefined && d.latitude !== null ? String(d.latitude) : "",
+          longitude: d.longitude !== undefined && d.longitude !== null ? String(d.longitude) : "",
         }))
       );
 
@@ -98,28 +100,90 @@ class AWSvc {
   }
 
   async addLocation(loc) {
-    const d = await this._handleDB(
-      this.db.createDocument(this.cfg.databaseId, this.cfg.locCollId, ID.unique(), {
-        locationId: loc.location_id,
-        reason: loc.reason || "R1",
-        LocationName: loc.name,
-        address: loc.address || "",
-        link: loc.link || "",
-      })
-    );
-    return { ...loc, _docId: d.$id };
+    const latVal = parseFloat(loc.latitude);
+    const lngVal = parseFloat(loc.longitude);
+    const payload = {
+      locationId: loc.location_id,
+      reason: loc.reason || "R1",
+      LocationName: loc.name,
+      address: loc.address || "",
+      link: loc.link || "",
+      latitude: isNaN(latVal) ? null : latVal,
+      longitude: isNaN(lngVal) ? null : lngVal,
+    };
+
+    try {
+      const d = await this._handleDB(
+        this.db.createDocument(this.cfg.databaseId, this.cfg.locCollId, ID.unique(), payload)
+      );
+      return { ...loc, _docId: d.$id };
+    } catch (error) {
+      const isValidationError = error.message && (
+        error.message.includes("Invalid document") ||
+        error.message.includes("schema") ||
+        error.message.includes("attribute") ||
+        error.message.includes("Missing") ||
+        error.message.includes("not found")
+      );
+      if (isValidationError) {
+        console.warn("Appwrite schema does not support latitude/longitude attributes. Retrying add without them.", error);
+        const corePayload = {
+          locationId: loc.location_id,
+          reason: loc.reason || "R1",
+          LocationName: loc.name,
+          address: loc.address || "",
+          link: loc.link || "",
+        };
+        const d = await this._handleDB(
+          this.db.createDocument(this.cfg.databaseId, this.cfg.locCollId, ID.unique(), corePayload)
+        );
+        return { ...loc, _docId: d.$id, coords_local_only: true };
+      }
+      throw error;
+    }
   }
 
   async updateLocation(docId, loc) {
-    await this._handleDB(
-      this.db.updateDocument(this.cfg.databaseId, this.cfg.locCollId, docId, {
-        locationId: loc.location_id,
-        reason: loc.reason || "R1",
-        LocationName: loc.name,
-        address: loc.address || "",
-        link: loc.link || "",
-      })
-    );
+    const latVal = parseFloat(loc.latitude);
+    const lngVal = parseFloat(loc.longitude);
+    const payload = {
+      locationId: loc.location_id,
+      reason: loc.reason || "R1",
+      LocationName: loc.name,
+      address: loc.address || "",
+      link: loc.link || "",
+      latitude: isNaN(latVal) ? null : latVal,
+      longitude: isNaN(lngVal) ? null : lngVal,
+    };
+
+    try {
+      await this._handleDB(
+        this.db.updateDocument(this.cfg.databaseId, this.cfg.locCollId, docId, payload)
+      );
+    } catch (error) {
+      const isValidationError = error.message && (
+        error.message.includes("Invalid document") ||
+        error.message.includes("schema") ||
+        error.message.includes("attribute") ||
+        error.message.includes("Missing") ||
+        error.message.includes("not found")
+      );
+      if (isValidationError) {
+        console.warn("Appwrite schema does not support latitude/longitude attributes. Retrying update without them.", error);
+        const corePayload = {
+          locationId: loc.location_id,
+          reason: loc.reason || "R1",
+          LocationName: loc.name,
+          address: loc.address || "",
+          link: loc.link || "",
+        };
+        await this._handleDB(
+          this.db.updateDocument(this.cfg.databaseId, this.cfg.locCollId, docId, corePayload)
+        );
+      } else {
+        throw error;
+      }
+    }
   }
 
   async deleteLocation(docId) {
@@ -145,7 +209,17 @@ class AWSvc {
       r.documents.forEach((d) => {
         if (!out[d.monthYear]) out[d.monthYear] = {};
         if (!out[d.monthYear][d.locationId]) out[d.monthYear][d.locationId] = {};
-        out[d.monthYear][d.locationId][`v${d.visitNumber}`] = { visited_at: d.timestamp, _docId: d.$id };
+        const notes = d.feedback || d.problem || d.nextAction || d.remarks ? {
+          feedback: d.feedback || "",
+          problem: d.problem || "",
+          nextAction: d.nextAction || "",
+          remarks: d.remarks || "",
+        } : null;
+        out[d.monthYear][d.locationId][`v${d.visitNumber}`] = { 
+          visited_at: d.timestamp, 
+          _docId: d.$id,
+          notes,
+        };
       });
 
       if (r.documents.length < 100) break;
@@ -155,17 +229,50 @@ class AWSvc {
     return out;
   }
 
-  async markVisit(locationId, visitNumber, timestamp) {
+  async markVisit(locationId, visitNumber, timestamp, notes = null) {
     const mk = monthYear();
-    const d = await this._handleDB(
-      this.db.createDocument(this.cfg.databaseId, this.cfg.visCollId, ID.unique(), {
-        locationId,
-        visitNumber,
-        timestamp,
-        monthYear: mk,
-      })
-    );
-    return { visited_at: timestamp, _docId: d.$id };
+    const payload = {
+      locationId,
+      visitNumber,
+      timestamp,
+      monthYear: mk,
+    };
+
+    if (notes) {
+      payload.feedback = notes.feedback || "";
+      payload.problem = notes.problem || "";
+      payload.nextAction = notes.nextAction || "";
+      payload.remarks = notes.remarks || "";
+    }
+
+    try {
+      const d = await this._handleDB(
+        this.db.createDocument(this.cfg.databaseId, this.cfg.visCollId, ID.unique(), payload)
+      );
+      return { visited_at: timestamp, _docId: d.$id, notes };
+    } catch (error) {
+      const isValidationError = error.message && (
+        error.message.includes("Invalid document") ||
+        error.message.includes("schema") ||
+        error.message.includes("attribute") ||
+        error.message.includes("Missing") ||
+        error.message.includes("not found")
+      );
+      if (notes && isValidationError) {
+        console.warn("Appwrite schema does not support note attributes. Retrying without notes.", error);
+        const corePayload = {
+          locationId,
+          visitNumber,
+          timestamp,
+          monthYear: mk,
+        };
+        const d = await this._handleDB(
+          this.db.createDocument(this.cfg.databaseId, this.cfg.visCollId, ID.unique(), corePayload)
+        );
+        return { visited_at: timestamp, _docId: d.$id, notes, notes_local_only: true };
+      }
+      throw error;
+    }
   }
 
   // ── Profile ───────────────────────────────────────────────────────────────

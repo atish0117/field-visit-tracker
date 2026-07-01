@@ -13,6 +13,7 @@ import { LocationsPage } from "./pages/LocationsPage";
 import { CalendarPage } from "./pages/CalendarPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { RemindersPage } from "./pages/RemindersPage";
+import { RoutePage } from "./pages/RoutePage";
 
 function parseCoordsFromUrl(url) {
   if (!url) return { latitude: "", longitude: "" };
@@ -48,9 +49,19 @@ export default function App() {
   const [vLoad, setVLoad] = useState({});
 
   // Data
-  const [profile, setProfile] = useState({ name: "", employee_id: "", avatar_url: "" });
-  const [locations, setLocations] = useState([]);
-  const [visits, setVisits] = useState({});
+  const [profile, setProfile] = useState(() => ls.get("fv_cached_profile", { name: "", employee_id: "", avatar_url: "" }));
+  const [locations, setLocations] = useState(() => ls.get("fv_cached_locations", []));
+  const [visits, setVisits] = useState(() => ls.get("fv_cached_visits", {}));
+
+  // Offline & Sync Queue states
+  const [onlineStatus, setOnlineStatus] = useState(navigator.onLine);
+  const [unsyncedQueue, setUnsyncedQueue] = useState(() => ls.get("fv_unsynced_visits", []));
+  const [syncingQueue, setSyncingQueue] = useState(false);
+
+  // Visit Notes Modals states
+  const [pendingNotesMark, setPendingNotesMark] = useState(null); // { locId, n }
+  const [notesForm, setNotesForm] = useState({ feedback: "", problem: "", nextAction: "", remarks: "" });
+  const [activeViewNotes, setActiveViewNotes] = useState(null); // notes object to display
 
   // Modals
   const [editProfile, setEP] = useState(false);
@@ -74,33 +85,7 @@ export default function App() {
     }
   }, []);
 
-  if (!awSvc.isConfigured) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f1117", color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
-        <div style={{ background: "#1a1d27", padding: 40, borderRadius: 24, border: "1px solid #2a2d3a", maxWidth: 480, width: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.4)" }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, #ef4444, #f97316)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
-            <span style={{ fontSize: 32 }}>☁️</span>
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 10px 0" }}>Appwrite Integration Missing</h1>
-          <p style={{ color: "#9ca3af", lineHeight: 1.6, marginBottom: 24 }}>
-            It looks like your <strong style={{ color: "#fff" }}>.env</strong> file is empty or missing your Appwrite credentials. The backend cannot start without it.
-          </p>
-          <div style={{ background: "#000", padding: 20, borderRadius: 12, border: "1px solid #374151" }}>
-            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 10 }}>Please add your IDs to <code>.env</code>:</div>
-            <code style={{ color: "#60a5fa", fontSize: 12, whiteSpace: "pre-wrap", display: "block", lineHeight: 1.5 }}>
-VITE_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1<br/>
-VITE_APPWRITE_PROJECT_ID=your_project_id<br/>
-VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
-...
-            </code>
-          </div>
-          <p style={{ color: "#fbbf24", fontSize: 13, marginTop: 24, fontWeight: 700 }}>
-            ⚠️ Important: After editing .env, you must RESTART your terminal (close it and run `npm run dev` again)!
-          </p>
-        </div>
-      </div>
-    );
-  }
+
 
   const syncAll = async () => {
     setLoading(true);
@@ -109,6 +94,12 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
       setLocations(locs);
       setVisits(vis);
       if (prof) setProfile(prof);
+
+      // Cache values locally
+      ls.set("fv_cached_locations", locs);
+      ls.set("fv_cached_visits", vis);
+      if (prof) ls.set("fv_cached_profile", prof);
+
       toast("Synced with Appwrite ☁️", "info");
     } catch (e) {
       toast("Sync failed: " + (e.message || "unknown"), "error");
@@ -118,29 +109,161 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
   };
 
   // Visit helpers
-  const getVisit = (locId, n) => visits[mk]?.[locId]?.[`v${n}`];
+  const getVisit = (locId, n) => {
+    const v = visits[mk]?.[locId]?.[`v${n}`];
+    if (v && !v.notes) {
+      const notesCache = ls.get("fv_visit_notes", {});
+      const localNotes = notesCache[`${locId}_${n}_${mk}`];
+      if (localNotes) {
+        v.notes = localNotes;
+      }
+    }
+    return v;
+  };
+
   const getStatus = (locId) => {
     const v1 = getVisit(locId, 1), v2 = getVisit(locId, 2);
     return v1 && v2 ? "Completed" : v1 || v2 ? "Partial" : "Pending";
   };
 
-  const markVisit = async (locId, n) => {
-    const key = `${locId}_${n}`;
-    setVLoad((p) => ({ ...p, [key]: true }));
-    const ts = new Date().toISOString(); // To send timestamptz format
-    try {
-      const vd = await awSvc.markVisit(locId, n, ts);
-      setVisits((prev) => ({
-        ...prev,
-        [mk]: { ...prev[mk], [locId]: { ...prev[mk]?.[locId], [`v${n}`]: vd } },
-      }));
-      toast(`Visit ${n} marked for ${locations.find((l) => l.location_id === locId)?.name}! ✅`);
-    } catch (e) {
-      toast("Failed: " + e.message, "error");
-    } finally {
-      setVLoad((p) => ({ ...p, [key]: false }));
+  // Background Sync Worker
+  const syncUnsyncedVisits = async (customQueue = null) => {
+    if (!navigator.onLine) return;
+    if (syncingQueue) return;
+    setSyncingQueue(true);
+
+    const queue = customQueue || ls.get("fv_unsynced_visits", []);
+    if (queue.length === 0) {
+      setSyncingQueue(false);
+      return;
+    }
+
+    const remainingQueue = [...queue];
+    let hasSyncedAny = false;
+
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i];
+      try {
+        const vd = await awSvc.markVisit(
+          item.locationId,
+          item.visitNumber,
+          item.timestamp,
+          item.notes
+        );
+
+        remainingQueue.shift();
+        ls.set("fv_unsynced_visits", remainingQueue);
+        setUnsyncedQueue([...remainingQueue]);
+        hasSyncedAny = true;
+
+        setVisits((prev) => {
+          const updated = {
+            ...prev,
+            [mk]: {
+              ...prev[mk],
+              [item.locationId]: {
+                ...prev[mk]?.[item.locationId],
+                [`v${item.visitNumber}`]: {
+                  visited_at: item.timestamp,
+                  _docId: vd._docId,
+                  notes: item.notes,
+                },
+              },
+            },
+          };
+          ls.set("fv_cached_visits", updated);
+          return updated;
+        });
+      } catch (err) {
+        console.error("Failed to sync item:", item, err);
+        if (err.message && (err.message.includes("fetch") || err.message.includes("Network") || err.message.includes("Missing"))) {
+          break;
+        }
+        // If it's a hard validation error, markVisit fallback already resolved it.
+        break;
+      }
+    }
+
+    setSyncingQueue(false);
+    if (hasSyncedAny && remainingQueue.length === 0) {
+      toast("Offline visits synced to Appwrite ☁️");
     }
   };
+
+  const markVisit = (locId, n) => {
+    const currentDay = getNow().getDate();
+    if (n === 2 && currentDay <= 15) {
+      toast("Visit 2 is locked until the 16th of the month", "error");
+      return;
+    }
+    // Open the notes modal
+    setNotesForm({ feedback: "", problem: "", nextAction: "", remarks: "" });
+    setPendingNotesMark({ locId, n });
+  };
+
+  const saveVisitWithNotes = async (locId, n, notes) => {
+    const key = `${locId}_${n}`;
+    setVLoad((p) => ({ ...p, [key]: true }));
+    const ts = new Date().toISOString();
+
+    // 1. Optimistic Update (local document state)
+    const tempDoc = { visited_at: ts, _docId: `temp_${Date.now()}`, notes };
+    setVisits((prev) => {
+      const updated = {
+        ...prev,
+        [mk]: {
+          ...prev[mk],
+          [locId]: {
+            ...prev[mk]?.[locId],
+            [`v${n}`]: tempDoc,
+          },
+        },
+      };
+      ls.set("fv_cached_visits", updated);
+      return updated;
+    });
+
+    // Save notes locally in a dedicated map
+    const notesCache = ls.get("fv_visit_notes", {});
+    notesCache[`${locId}_${n}_${mk}`] = notes;
+    ls.set("fv_visit_notes", notesCache);
+
+    // 2. Add to Unsynced Queue in LocalStorage
+    const queueItem = { locationId: locId, visitNumber: n, timestamp: ts, notes };
+    const queue = ls.get("fv_unsynced_visits", []);
+    queue.push(queueItem);
+    ls.set("fv_unsynced_visits", queue);
+    setUnsyncedQueue(queue);
+
+    toast(`Visit ${n} saved locally! 📝`);
+    setVLoad((p) => ({ ...p, [key]: false }));
+
+    // 3. Trigger sync
+    syncUnsyncedVisits(queue);
+  };
+
+  // Listen to network status change
+  useEffect(() => {
+    const handleOnline = () => {
+      setOnlineStatus(true);
+      syncUnsyncedVisits();
+    };
+    const handleOffline = () => {
+      setOnlineStatus(false);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    if (navigator.onLine) {
+      syncUnsyncedVisits();
+    }
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   // Location CRUD
   const openAdd = () => {
@@ -148,8 +271,15 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
     setLocModal({ mode: "add" });
   };
   const openEdit = (loc) => {
-    const coords = parseCoordsFromUrl(loc.link);
-    setLF({ ...loc, latitude: coords.latitude, longitude: coords.longitude });
+    const lat = loc.latitude || "";
+    const lng = loc.longitude || "";
+    const hasLat = lat !== "" && !isNaN(parseFloat(lat));
+    const hasLng = lng !== "" && !isNaN(parseFloat(lng));
+    setLF({ 
+      ...loc, 
+      latitude: hasLat ? lat : parseCoordsFromUrl(loc.link).latitude, 
+      longitude: hasLng ? lng : parseCoordsFromUrl(loc.link).longitude 
+    });
     setLocModal({ mode: "edit", orig: loc });
   };
 
@@ -252,7 +382,10 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
     return { completed, partial, pending, tv, total: locations.length };
   }, [locations, visits, mk]);
 
-  const pendingRem = locations.filter((l) => getStatus(l.location_id) !== "Completed");
+  const currentDay = getNow().getDate();
+  const pendingRem = currentDay <= 25
+    ? []
+    : locations.filter((l) => getStatus(l.location_id) !== "Completed");
 
   // Calendar visits map
   const calVisits = useMemo(() => {
@@ -304,6 +437,7 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
   const navItems = [
     { id: "visits", label: "Visits", icon: I.home },
     { id: "locations", label: "Locations", icon: I.map },
+    { id: "route", label: "Route Optimizer", icon: I.route },
     { id: "calendar", label: "Calendar", icon: I.cal },
     { id: "analytics", label: "Analytics", icon: I.chart },
     { id: "reminders", label: "Reminders", icon: I.bell, badge: pendingRem.length || null },
@@ -314,7 +448,7 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
       <VisitsPage
         loading={loading} stats={stats} filters={filters} setFilters={setFilters} applyFilters={applyFilters}
         locations={locations} getVisit={getVisit} markVisit={markVisit} vLoad={vLoad} getStatus={getStatus}
-        openEdit={openEdit} setDel={setDel}
+        openEdit={openEdit} setDel={setDel} onViewNotes={(notes) => setActiveViewNotes(notes)}
       />
     ),
     locations: (
@@ -322,6 +456,9 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
         locations={locations} filters={filters} setFilters={setFilters} applyFilters={applyFilters}
         openAdd={openAdd} openEdit={openEdit} setDel={setDel} getStatus={getStatus} getVisit={getVisit}
       />
+    ),
+    route: (
+      <RoutePage locations={locations} getStatus={getStatus} />
     ),
     calendar: (
       <CalendarPage
@@ -337,11 +474,40 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
     reminders: (
       <RemindersPage
         pendingRem={pendingRem} getVisit={getVisit} markVisit={markVisit} vLoad={vLoad}
+        currentDay={getNow().getDate()}
       />
     ),
   };
 
   const Page = pages[tab] || pages.visits;
+
+  if (!awSvc.isConfigured) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f1117", color: "#fff", fontFamily: "'DM Sans', sans-serif" }}>
+        <div style={{ background: "#1a1d27", padding: 40, borderRadius: 24, border: "1px solid #2a2d3a", maxWidth: 480, width: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.4)" }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, #ef4444, #f97316)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 20 }}>
+            <span style={{ fontSize: 32 }}>☁️</span>
+          </div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, margin: "0 0 10px 0" }}>Appwrite Integration Missing</h1>
+          <p style={{ color: "#9ca3af", lineHeight: 1.6, marginBottom: 24 }}>
+            It looks like your <strong style={{ color: "#fff" }}>.env</strong> file is empty or missing your Appwrite credentials. The backend cannot start without it.
+          </p>
+          <div style={{ background: "#000", padding: 20, borderRadius: 12, border: "1px solid #374151" }}>
+            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 10 }}>Please add your IDs to <code>.env</code>:</div>
+            <code style={{ color: "#60a5fa", fontSize: 12, whiteSpace: "pre-wrap", display: "block", lineHeight: 1.5 }}>
+VITE_APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1<br/>
+VITE_APPWRITE_PROJECT_ID=your_project_id<br/>
+VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
+...
+            </code>
+          </div>
+          <p style={{ color: "#fbbf24", fontSize: 13, marginTop: 24, fontWeight: 700 }}>
+            ⚠️ Important: After editing .env, you must RESTART your terminal (close it and run `npm run dev` again)!
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={cssVars}>
@@ -376,6 +542,34 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
                 style={{ width: "100%", padding: "7px 12px 7px 30px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", fontSize: 12, fontFamily: "var(--font)", outline: "none" }}
               />
             </div>
+
+            {/* Sync Status Indicator */}
+            <div 
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: 6, 
+                padding: "6px 10px", 
+                borderRadius: 8, 
+                background: !onlineStatus ? "#ef444415" : unsyncedQueue.length > 0 ? "#f59e0b15" : "#22c55e15",
+                border: `1px solid ${!onlineStatus ? "#ef444430" : unsyncedQueue.length > 0 ? "#f59e0b30" : "#22c55e30"}`,
+                color: !onlineStatus ? "#ef4444" : unsyncedQueue.length > 0 ? "#f59e0b" : "#22c55e",
+                fontSize: 11,
+                fontWeight: 700,
+                marginLeft: 8,
+                marginRight: 4,
+                fontFamily: "var(--font)",
+                cursor: onlineStatus && unsyncedQueue.length > 0 ? "pointer" : "default"
+              }} 
+              onClick={() => onlineStatus && unsyncedQueue.length > 0 && syncUnsyncedVisits()}
+              title={!onlineStatus ? "Offline - visits saved locally" : unsyncedQueue.length > 0 ? `Click to sync ${unsyncedQueue.length} visits` : "Fully synced with Appwrite"}
+            >
+              <Icon d={I.cloud} size={13} />
+              <span className="sync-text" style={{ whiteSpace: "nowrap" }}>
+                {!onlineStatus ? "Offline" : unsyncedQueue.length > 0 ? `Syncing (${unsyncedQueue.length})` : "Synced"}
+              </span>
+            </div>
+
             <div
               style={{ width: 34, height: 34, borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#6366f1)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", cursor: "pointer", flexShrink: 0 }}
               onClick={() => { setPF({ ...profile }); setEP(true); }}
@@ -515,6 +709,81 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
             </div>
           ) : null;
         })()}
+      </Modal>
+
+      {/* ── Visit Notes Form Modal ── */}
+      <Modal open={!!pendingNotesMark} onClose={() => setPendingNotesMark(null)} title="Mark Visit Notes">
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ background: "var(--hover)", padding: 10, borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, color: "var(--text)" }}>
+            Adding notes for <strong>{locations.find((l) => l.location_id === pendingNotesMark?.locId)?.name}</strong> (Visit {pendingNotesMark?.n})
+          </div>
+          <Inp 
+            label="Customer Feedback" 
+            value={notesForm.feedback} 
+            onChange={(v) => setNotesForm((p) => ({ ...p, feedback: v }))} 
+            placeholder="Feedback from customer..." 
+          />
+          <Inp 
+            label="Problem Encountered (Optional)" 
+            value={notesForm.problem} 
+            onChange={(v) => setNotesForm((p) => ({ ...p, problem: v }))} 
+            placeholder="Any problems encountered?" 
+          />
+          <Inp 
+            label="Next Action (Optional)" 
+            value={notesForm.nextAction} 
+            onChange={(v) => setNotesForm((p) => ({ ...p, nextAction: v }))} 
+            placeholder="What needs to be done next?" 
+          />
+          <Inp 
+            label="Remarks / General Comments" 
+            value={notesForm.remarks} 
+            onChange={(v) => setNotesForm((p) => ({ ...p, remarks: v }))} 
+            placeholder="Any additional remarks..." 
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setPendingNotesMark(null)}>Cancel</Btn>
+            <Btn onClick={() => {
+              saveVisitWithNotes(pendingNotesMark.locId, pendingNotesMark.n, notesForm);
+              setPendingNotesMark(null);
+            }}>Submit & Mark Visit</Btn>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── View Notes Modal ── */}
+      <Modal open={!!activeViewNotes} onClose={() => setActiveViewNotes(null)} title="Visit Details & Notes">
+        {activeViewNotes && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: "var(--font)" }}>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Customer Feedback</label>
+              <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
+                {activeViewNotes.feedback || "No feedback logged."}
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Problem Encountered</label>
+              <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
+                {activeViewNotes.problem || "No problem reported."}
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Next Action</label>
+              <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
+                {activeViewNotes.nextAction || "No next action listed."}
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Remarks</label>
+              <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
+                {activeViewNotes.remarks || "No remarks logged."}
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <Btn onClick={() => setActiveViewNotes(null)}>Close</Btn>
+            </div>
+          </div>
+        )}
       </Modal>
 
       <Toasts />
