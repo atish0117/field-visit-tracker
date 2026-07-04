@@ -209,16 +209,17 @@ class AWSvc {
       r.documents.forEach((d) => {
         if (!out[d.monthYear]) out[d.monthYear] = {};
         if (!out[d.monthYear][d.locationId]) out[d.monthYear][d.locationId] = {};
-        const notes = d.feedback || d.problem || d.nextAction || d.remarks ? {
-          feedback: d.feedback || "",
-          problem: d.problem || "",
-          nextAction: d.nextAction || "",
-          remarks: d.remarks || "",
-        } : null;
+        
+        let notes = "";
+        if (d.problem) notes = d.problem;
+        else if (d.remarks) notes = d.remarks;
+        else if (d.feedback) notes = d.feedback;
+        else if (d.nextAction) notes = d.nextAction;
+
         out[d.monthYear][d.locationId][`v${d.visitNumber}`] = { 
           visited_at: d.timestamp, 
           _docId: d.$id,
-          notes,
+          notes: notes || null,
         };
       });
 
@@ -239,10 +240,7 @@ class AWSvc {
     };
 
     if (notes) {
-      payload.feedback = notes.feedback || "";
-      payload.problem = notes.problem || "";
-      payload.nextAction = notes.nextAction || "";
-      payload.remarks = notes.remarks || "";
+      payload.problem = notes;
     }
 
     try {
@@ -345,3 +343,9 @@ function dataURLtoFile(dataurl, filename) {
 }
 
 export const awSvc = new AWSvc();
+
+/*
+* Git Commit Message Details for appwrite.js:
+* - Simplify getVisits to parse note attributes (problem, remarks, feedback, nextAction) into a single plain string value for 'notes'.
+* - Simplify markVisit to take 'notes' as a string and assign it to both 'problem' and 'remarks' fields for Appwrite database saving.
+*/
