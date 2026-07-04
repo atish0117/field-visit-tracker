@@ -4,7 +4,7 @@ import { SBadge } from "../components/ui/Badge";
 import { fmtDate } from "../lib/utils";
 import { Icon, I } from "../lib/icons";
 
-export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getStatus }) {
+export function AnalyticsPage({ monthlyChart, locations, getVisit, getStatus }) {
   const [activeStatusFilter, setActiveStatusFilter] = useState("all");
   const [breakdownSearch, setBreakdownSearch] = useState("");
 
@@ -32,36 +32,30 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
   // Advanced Operations Metrics Calculations
   const operationsMetrics = useMemo(() => {
     let totalVisitsLogged = 0;
-    const reasonCounts = {};
+    let coveredLocations = 0;
 
     locations.forEach((loc) => {
-      if (getVisit(loc.location_id, 1)) totalVisitsLogged++;
-      if (getVisit(loc.location_id, 2)) totalVisitsLogged++;
-
-      const r = loc.reason || "R1";
-      reasonCounts[r] = (reasonCounts[r] || 0) + 1;
+      const v1 = getVisit(loc.location_id, 1);
+      const v2 = getVisit(loc.location_id, 2);
+      if (v1) totalVisitsLogged++;
+      if (v2) totalVisitsLogged++;
+      if (v1 || v2) {
+        coveredLocations++;
+      }
     });
 
     const maxPossibleVisits = locations.length * 2;
     const complianceRate = maxPossibleVisits > 0 ? Math.round((totalVisitsLogged / maxPossibleVisits) * 100) : 0;
     const remainingVisits = maxPossibleVisits - totalVisitsLogged;
-
-    let topReason = "None";
-    let topReasonCount = 0;
-    Object.entries(reasonCounts).forEach(([r, count]) => {
-      if (count > topReasonCount) {
-        topReason = r;
-        topReasonCount = count;
-      }
-    });
+    const coverageRate = locations.length > 0 ? Math.round((coveredLocations / locations.length) * 100) : 0;
 
     return {
       totalVisitsLogged,
       maxPossibleVisits,
       complianceRate,
       remainingVisits,
-      topReason,
-      topReasonCount
+      coveredLocations,
+      coverageRate
     };
   }, [locations, getVisit]);
 
@@ -70,7 +64,7 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
     return locations.filter((loc) => {
       const st = getStatus(loc.location_id);
       const statusMatch = activeStatusFilter === "all" || st === activeStatusFilter;
-      
+
       const q = breakdownSearch.toLowerCase().trim();
       const searchMatch = !q || loc.location_id.toLowerCase().includes(q) || loc.name.toLowerCase().includes(q);
 
@@ -78,13 +72,37 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
     });
   }, [locations, activeStatusFilter, breakdownSearch, getStatus]);
 
+  const visitsByWeekday = useMemo(() => {
+    const weekdayCounts = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+    const weekdaysOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    locations.forEach((loc) => {
+      [1, 2].forEach((n) => {
+        const v = getVisit(loc.location_id, n);
+        if (v?.visited_at) {
+          const d = new Date(v.visited_at);
+          const dayName = dayNames[d.getDay()];
+          if (weekdayCounts[dayName] !== undefined) {
+            weekdayCounts[dayName]++;
+          }
+        }
+      });
+    });
+
+    return weekdaysOrder.map((day) => ({
+      label: day,
+      value: weekdayCounts[day]
+    }));
+  }, [locations, getVisit]);
+
   const toggleStatusFilter = (status) => {
     setActiveStatusFilter((prev) => (prev === status ? "all" : status));
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      
+
       {/* Completion Status Summary Card */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
@@ -116,14 +134,14 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
             </button>
           )}
         </div>
-        
+
         {/* Stacked Progress Bar */}
         <div style={{ display: "flex", height: 16, borderRadius: 8, overflow: "hidden", background: "var(--hover)", marginBottom: 18 }}>
           {stats.completed > 0 && <div style={{ width: `${stats.completedPct}%`, background: "linear-gradient(90deg, #22c55e, #16a34a)", transition: "width 0.4s" }} title={`Completed: ${stats.completed}`} />}
           {stats.partial > 0 && <div style={{ width: `${stats.partialPct}%`, background: "linear-gradient(90deg, #f59e0b, #d97706)", transition: "width 0.4s" }} title={`Partial: ${stats.partial}`} />}
           {stats.pending > 0 && <div style={{ width: `${stats.pendingPct}%`, background: "linear-gradient(90deg, #ef4444, #dc2626)", transition: "width 0.4s" }} title={`Pending: ${stats.pending}`} />}
         </div>
-        
+
         {/* Status Count Legend cards (Interactive) */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 12 }}>
           {[
@@ -133,17 +151,17 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
           ].map((item) => {
             const isActive = activeStatusFilter === item.statusVal;
             return (
-              <div 
-                key={item.label} 
+              <div
+                key={item.label}
                 onClick={() => toggleStatusFilter(item.statusVal)}
-                style={{ 
-                  background: item.bg, 
+                style={{
+                  background: item.bg,
                   border: `2px solid ${isActive ? item.color : "transparent"}`,
                   outline: `1px solid ${isActive ? "transparent" : `${item.color}25`}`,
-                  borderRadius: 12, 
-                  padding: "10px 14px", 
-                  display: "flex", 
-                  flexDirection: "column", 
+                  borderRadius: 12,
+                  padding: "10px 14px",
+                  display: "flex",
+                  flexDirection: "column",
                   gap: 2,
                   cursor: "pointer",
                   transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -204,17 +222,17 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
           </div>
         </div>
 
-        {/* Top Configurations KPI Card */}
+        {/* Active Site Coverage KPI Card */}
         <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: "16px 20px", display: "flex", alignItems: "center", gap: 14 }}>
           <div style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(99, 102, 241, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#6366f1", flexShrink: 0 }}>
-            <span style={{ fontSize: 18, margin: "auto" }}>📋</span>
+            <span style={{ fontSize: 18, margin: "auto" }}>📍</span>
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 20, fontWeight: 800, color: "var(--text)", fontFamily: "var(--font)" }}>
-              {operationsMetrics.topReason}
+              {operationsMetrics.coverageRate}%
             </div>
             <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>
-              Top RBO Reason ({operationsMetrics.topReasonCount} Locations)
+              Active Site Coverage ({operationsMetrics.coveredLocations} of {locations.length})
             </div>
           </div>
         </div>
@@ -222,12 +240,12 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 }}>
         <BarChart data={monthlyChart} title="Monthly Visits (Last 6 Months)" color="#3b82f6" />
-        <BarChart data={topLocs} title="Top Locations by Visit Count" color="#6366f1" />
+        <BarChart data={visitsByWeekday} title="Visits by Day of the Week" color="#6366f1" />
       </div>
-     
+
       {/* Monthly breakdown */}
       <div style={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 16, padding: 20 }}>
-        
+
         {/* Header with Search Input */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -322,3 +340,10 @@ export function AnalyticsPage({ monthlyChart, topLocs, locations, getVisit, getS
     </div>
   );
 }
+
+/*
+* Git Commit Message Details for AnalyticsPage.jsx:
+* - Update operationsMetrics calculations to compute active site coverage and coverage rate.
+* - Remove R1 (Top RBO Reason) KPI card and replace with Active Site Coverage KPI card.
+* - Remove Top Locations by Visit Count chart and replace with Visits by Day of the Week bar chart.
+*/
