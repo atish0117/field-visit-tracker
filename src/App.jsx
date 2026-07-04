@@ -60,8 +60,8 @@ export default function App() {
 
   // Visit Notes Modals states
   const [pendingNotesMark, setPendingNotesMark] = useState(null); // { locId, n }
-  const [notesForm, setNotesForm] = useState({ feedback: "", problem: "", nextAction: "", remarks: "" });
-  const [activeViewNotes, setActiveViewNotes] = useState(null); // notes object to display
+  const [notesForm, setNotesForm] = useState("");
+  const [activeViewNotes, setActiveViewNotes] = useState(null); // notes string to display
 
   // Modals
   const [editProfile, setEP] = useState(false);
@@ -197,7 +197,7 @@ export default function App() {
       return;
     }
     // Open the notes modal
-    setNotesForm({ feedback: "", problem: "", nextAction: "", remarks: "" });
+    setNotesForm("");
     setPendingNotesMark({ locId, n });
   };
 
@@ -448,7 +448,13 @@ export default function App() {
       <VisitsPage
         loading={loading} stats={stats} filters={filters} setFilters={setFilters} applyFilters={applyFilters}
         locations={locations} getVisit={getVisit} markVisit={markVisit} vLoad={vLoad} getStatus={getStatus}
-        openEdit={openEdit} setDel={setDel} onViewNotes={(notes) => setActiveViewNotes(notes)}
+        openEdit={openEdit} setDel={setDel} onViewNotes={(locId, n, notes) => {
+          if (notes !== undefined) {
+            setActiveViewNotes({ locId, n, notes });
+          } else {
+            setActiveViewNotes({ notes });
+          }
+        }}
       />
     ),
     locations: (
@@ -468,7 +474,7 @@ export default function App() {
     ),
     analytics: (
       <AnalyticsPage
-        monthlyChart={monthlyChart} topLocs={topLocs} locations={locations} getVisit={getVisit} getStatus={getStatus}
+        monthlyChart={monthlyChart} locations={locations} getVisit={getVisit} getStatus={getStatus}
       />
     ),
     reminders: (
@@ -714,37 +720,30 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
       {/* ── Visit Notes Form Modal ── */}
       <Modal open={!!pendingNotesMark} onClose={() => setPendingNotesMark(null)} title="Mark Visit Notes">
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ background: "var(--hover)", padding: 10, borderRadius: 8, border: "1px solid var(--border)", fontSize: 12, color: "var(--text)" }}>
-            Adding notes for <strong>{locations.find((l) => l.location_id === pendingNotesMark?.locId)?.name}</strong> (Visit {pendingNotesMark?.n})
-          </div>
+          {pendingNotesMark && (() => {
+            const loc = locations.find((l) => l.location_id === pendingNotesMark.locId);
+            return (
+              <div style={{ background: "var(--hover)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Location Details</span>
+                  <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 800, color: "#3b82f6", background: "#3b82f610", padding: "1px 6px", borderRadius: 4 }}>{pendingNotesMark.locId}</span>
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{loc?.name || "Unknown Location"}</div>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>Visit ID: <strong style={{ color: "var(--text)" }}>Visit {pendingNotesMark.n}</strong></div>
+              </div>
+            );
+          })()}
           <Inp 
-            label="Customer Feedback" 
-            value={notesForm.feedback} 
-            onChange={(v) => setNotesForm((p) => ({ ...p, feedback: v }))} 
-            placeholder="Feedback from customer..." 
-          />
-          <Inp 
-            label="Problem Encountered (Optional)" 
-            value={notesForm.problem} 
-            onChange={(v) => setNotesForm((p) => ({ ...p, problem: v }))} 
-            placeholder="Any problems encountered?" 
-          />
-          <Inp 
-            label="Next Action (Optional)" 
-            value={notesForm.nextAction} 
-            onChange={(v) => setNotesForm((p) => ({ ...p, nextAction: v }))} 
-            placeholder="What needs to be done next?" 
-          />
-          <Inp 
-            label="Remarks / General Comments" 
-            value={notesForm.remarks} 
-            onChange={(v) => setNotesForm((p) => ({ ...p, remarks: v }))} 
-            placeholder="Any additional remarks..." 
+            label="Problem Remarks" 
+            value={notesForm || ""} 
+            onChange={(v) => setNotesForm(v)} 
+            placeholder="Describe any problems or general remarks..." 
+            rows={3}
           />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
             <Btn variant="ghost" onClick={() => setPendingNotesMark(null)}>Cancel</Btn>
             <Btn onClick={() => {
-              saveVisitWithNotes(pendingNotesMark.locId, pendingNotesMark.n, notesForm);
+              saveVisitWithNotes(pendingNotesMark.locId, pendingNotesMark.n, notesForm || "");
               setPendingNotesMark(null);
             }}>Submit & Mark Visit</Btn>
           </div>
@@ -755,28 +754,26 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
       <Modal open={!!activeViewNotes} onClose={() => setActiveViewNotes(null)} title="Visit Details & Notes">
         {activeViewNotes && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14, fontFamily: "var(--font)" }}>
+            {activeViewNotes.locId && (() => {
+              const loc = locations.find((l) => l.location_id === activeViewNotes.locId);
+              return (
+                <div style={{ background: "var(--hover)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Location Details</span>
+                    <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 800, color: "#3b82f6", background: "#3b82f610", padding: "1px 6px", borderRadius: 4 }}>{activeViewNotes.locId}</span>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{loc?.name || "Unknown Location"}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>Visit ID: <strong style={{ color: "var(--text)" }}>Visit {activeViewNotes.n}</strong></div>
+                </div>
+              );
+            })()}
             <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Customer Feedback</label>
+              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Problem Remarks</label>
               <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
-                {activeViewNotes.feedback || "No feedback logged."}
-              </div>
-            </div>
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Problem Encountered</label>
-              <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
-                {activeViewNotes.problem || "No problem reported."}
-              </div>
-            </div>
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Next Action</label>
-              <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
-                {activeViewNotes.nextAction || "No next action listed."}
-              </div>
-            </div>
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Remarks</label>
-              <div style={{ fontSize: 13, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--border)", padding: "8px 12px", borderRadius: 8, marginTop: 4, minHeight: 40, whiteSpace: "pre-wrap" }}>
-                {activeViewNotes.remarks || "No remarks logged."}
+                {typeof activeViewNotes.notes === "object" && activeViewNotes.notes
+                  ? (activeViewNotes.notes.problem || activeViewNotes.notes.remarks || activeViewNotes.notes.feedback || activeViewNotes.notes.nextAction || "No problem remarks logged.")
+                  : (activeViewNotes.notes || activeViewNotes.problem || activeViewNotes.remarks || "No problem remarks logged.")
+                }
               </div>
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
@@ -790,3 +787,11 @@ VITE_APPWRITE_DATABASE_ID=your_database_id<br/>
     </div>
   );
 }
+
+/*
+* Git Commit Message Details for App.jsx:
+* - Remove topLocs prop passed to AnalyticsPage.
+* - Modify Visit Notes Form Modal to show only a single textarea input box for Problem Remarks (redefined state as a simple string), and render location details/Visit ID at the top.
+* - Simplify save/view flow to pass and render notes as a single string instead of an object.
+* - Update View Notes Modal to show location details and Visit ID at the top, and support backward compatibility for rendering existing object-based notes alongside new string-based notes without React crashes.
+*/
