@@ -1,8 +1,12 @@
 import { fmtDate, fmtTime } from "../../lib/utils";
 
-export function VBtn({ n, data, onClick, disabled, loading, lockedReason, isRecommended, onViewNotes }) {
+export function VBtn({ n, locId, data, onClick, disabled, loading, lockedReason, isRecommended, onViewNotes }) {
   if (data) {
-    const hasNotes = data.notes && (data.notes.feedback || data.notes.problem || data.notes.nextAction || data.notes.remarks);
+    const hasNotes = data.notes && (
+      typeof data.notes === "object"
+        ? (data.notes.feedback || data.notes.problem || data.notes.nextAction || data.notes.remarks)
+        : (typeof data.notes === "string" && data.notes.trim() !== "")
+    );
     return (
       <div
         style={{
@@ -19,7 +23,7 @@ export function VBtn({ n, data, onClick, disabled, loading, lockedReason, isReco
         <div style={{ fontSize: 10, color: "var(--muted)" }}>{fmtTime(data.visited_at)}</div>
         {hasNotes && (
           <button
-            onClick={() => onViewNotes && onViewNotes(data.notes)}
+            onClick={() => onViewNotes && onViewNotes(locId, n, data.notes)}
             style={{
               marginTop: 4,
               width: "100%",
@@ -85,4 +89,10 @@ export function VBtn({ n, data, onClick, disabled, loading, lockedReason, isReco
     </div>
   );
 }
+
+/*
+* Git Commit Message Details for VisitButton.jsx:
+* - Update hasNotes check to correctly support and render the 'Notes' button when visit notes are stored as a raw string format in addition to legacy object formats.
+* - Add locId prop to VBtn and pass locId, n, and notes parameters to onViewNotes callback function.
+*/
 
