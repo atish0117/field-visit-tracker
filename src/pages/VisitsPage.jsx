@@ -104,10 +104,10 @@ export function VisitsPage({
                     )}
                   </td>
                   <td style={{ padding: "9px 14px" }}>
-                    <VBtn n={1} data={v1} onClick={() => markVisit(loc.location_id, 1)} disabled={!!v1} loading={vLoad[`${loc.location_id}_1`]} isRecommended={!v1 && currentDay <= 15} onViewNotes={onViewNotes} />
+                    <VBtn n={1} locId={loc.location_id} data={v1} onClick={() => markVisit(loc.location_id, 1)} disabled={!!v1} loading={vLoad[`${loc.location_id}_1`]} isRecommended={!v1 && currentDay <= 15} onViewNotes={onViewNotes} />
                   </td>
                   <td style={{ padding: "9px 14px" }}>
-                    <VBtn n={2} data={v2} onClick={() => markVisit(loc.location_id, 2)} disabled={!v1 || !!v2 || currentDay <= 15} loading={vLoad[`${loc.location_id}_2`]} lockedReason={!v1 ? null : (currentDay <= 15 ? "date_locked" : null)} onViewNotes={onViewNotes} />
+                    <VBtn n={2} locId={loc.location_id} data={v2} onClick={() => markVisit(loc.location_id, 2)} disabled={!v1 || !!v2 || currentDay <= 15} loading={vLoad[`${loc.location_id}_2`]} lockedReason={!v1 ? null : (currentDay <= 15 ? "date_locked" : null)} onViewNotes={onViewNotes} />
                   </td>
                   <td style={{ padding: "11px 14px" }}>
                     <SBadge status={getStatus(loc.location_id)} />
@@ -165,8 +165,8 @@ export function VisitsPage({
               )}
               
               <div className="visits-card-actions">
-                <VBtn n={1} data={v1} onClick={() => markVisit(loc.location_id, 1)} disabled={!!v1} loading={vLoad[`${loc.location_id}_1`]} isRecommended={!v1 && currentDay <= 15} onViewNotes={onViewNotes} />
-                <VBtn n={2} data={v2} onClick={() => markVisit(loc.location_id, 2)} disabled={!v1 || !!v2 || currentDay <= 15} loading={vLoad[`${loc.location_id}_2`]} lockedReason={!v1 ? null : (currentDay <= 15 ? "date_locked" : null)} onViewNotes={onViewNotes} />
+                <VBtn n={1} locId={loc.location_id} data={v1} onClick={() => markVisit(loc.location_id, 1)} disabled={!!v1} loading={vLoad[`${loc.location_id}_1`]} isRecommended={!v1 && currentDay <= 15} onViewNotes={onViewNotes} />
+                <VBtn n={2} locId={loc.location_id} data={v2} onClick={() => markVisit(loc.location_id, 2)} disabled={!v1 || !!v2 || currentDay <= 15} loading={vLoad[`${loc.location_id}_2`]} lockedReason={!v1 ? null : (currentDay <= 15 ? "date_locked" : null)} onViewNotes={onViewNotes} />
               </div>
               
               {loc.link && (
@@ -183,4 +183,9 @@ export function VisitsPage({
     </div>
   );
 }
+
+/*
+* Git Commit Message Details for VisitsPage.jsx:
+* - Update VBtn elements to pass the 'locId' (location_id) parameter to properly support the location context when viewing notes.
+*/
 
